@@ -15,5 +15,8 @@ func main() {
 		} else {
 			server.HandleFiles(w, r)
 		}
-	}, nil)
+	}, &server.Options{
+		Version: "0.0.1",
+		Name:    "example-server",
+	})
 }
