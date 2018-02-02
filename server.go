@@ -474,6 +474,7 @@ again:
 		return
 	}
 	if fi.IsDir() {
+		f.Close()
 		path = filepath.Join(path, "index.html")
 		goto again
 	}
