@@ -121,10 +121,10 @@ Options:
   -c path      : enable TLS/HTTPS use a predefined HTTPS certificate
   -t port      : bind HTTPS port (default: 443, 4433 for -g)
 {{USAGE}}
-Examples: {{NAME}}                    start {{NAME}}. http://localhost:8000
-  or: {{NAME}} -p 80                  use HTTP port 80. http://localhost
-  or: {{NAME}} -g                     enable HTTPS generated certificate. https://localhost:4433
-  or: {{NAME}} -p 80 -l example.com   enable HTTPS with Let's Encrypt. https://example.com
+Examples: {{NAME}}               start {{NAME}}. http://localhost:8000
+  or: {{NAME}} -p 80             use HTTP port 80. http://localhost
+  or: {{NAME}} -g                enable HTTPS generated certificate. https://localhost:4433
+  or: {{NAME}} -l example.com    enable HTTPS with Let's Encrypt. https://example.com
 `
 
 // Options are server options
@@ -206,11 +206,35 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 			tlsPort = 443
 		}
 	}
+	if le != "" {
+		// flags that are not allowed with Let's Encrypt
+		badFlags := []string{"p", "c", "g", "t"}
+		var bad bool
+		for _, f := range badFlags {
+			var found bool
+			flag.Visit(func(ff *flag.Flag) {
+				if ff.Name == f {
+					found = true
+				}
+			})
+			if found {
+				bad = true
+				fmt.Fprintf(os.Stderr, "flags -l and -%s cannot be used together\n", f)
+			}
+		}
+		if bad {
+			os.Exit(1)
+		}
+		tlsPort = 443
+		port = 80
+	}
+
 	h := &httpServer{
 		Port:    port,
 		TLSPort: tlsPort,
 		log:     l,
 		handler: handler,
+		HTTPS:   le != "" || tlsCert != "" || gs,
 	}
 
 	pinit := func() {
@@ -221,9 +245,33 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 		}
 	}
 
-	if le != "" || tlsCert != "" || gs {
-		h.HTTPS = true
-		var tlsServer *http.Server
+	if le != "" {
+		// Let's Encrypt!
+		cacheDir := filepath.Join(homeDir(), certDir)
+		if err := os.MkdirAll(cacheDir, 0700); err != nil {
+			l.Fatalf("could not create cache directory: %s" + err.Error())
+		}
+		m := &autocert.Manager{
+			Cache:      autocert.DirCache(cacheDir),
+			Prompt:     autocert.AcceptTOS,
+			HostPolicy: autocert.HostWhitelist(le),
+		}
+		go http.ListenAndServe(":http", m.HTTPHandler(h))
+		go func() {
+			time.Sleep(time.Millisecond * 100)
+			l.Printf("Serving with Let's Encrypt!...\n")
+			pinit()
+		}()
+		s := &http.Server{
+			Addr:      ":https",
+			TLSConfig: &tls.Config{GetCertificate: m.GetCertificate},
+			Handler:   h,
+		}
+		l.Fatal(s.ListenAndServeTLS("", ""))
+		return
+	}
+
+	if h.HTTPS {
 		var certPath, keyPath string
 		switch {
 		case tlsCert != "":
@@ -238,49 +286,21 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 			if err := generateCertificates(certPath, keyPath); err != nil {
 				l.Fatalln(err)
 			}
-		default:
-			if tlsPort != 443 {
-				l.Fatal("invalid -tls-port. It must be 443 when LetsEncrypt is specified.")
-			}
-			cacheDir := filepath.Join(homeDir(), certDir)
-			if err := os.MkdirAll(cacheDir, 0700); err != nil {
-				l.Fatalf("could not create cache directory: %s" + err.Error())
-			}
-			certManager := autocert.Manager{
-				Cache:      autocert.DirCache(cacheDir),
-				Prompt:     autocert.AcceptTOS,
-				HostPolicy: autocert.HostWhitelist(le),
-			}
-			tlsServer = &http.Server{
-				Addr: fmt.Sprintf(":%d", tlsPort),
-				TLSConfig: &tls.Config{
-					GetCertificate: certManager.GetCertificate,
-				},
-				Handler: h,
-			}
 		}
+		go l.Fatal(http.ListenAndServeTLS(fmt.Sprintf(":%d", tlsPort), certPath, keyPath, h))
 		go func() {
-			var err error
-			if tlsServer == nil {
-				err = http.ListenAndServeTLS(fmt.Sprintf("0.0.0.0:%d", tlsPort), certPath, keyPath, h)
-			} else {
-				err = tlsServer.ListenAndServeTLS("", "")
-			}
-			if err != nil {
-				l.Fatal(err)
-			}
+			time.Sleep(time.Millisecond * 100)
+			l.Printf("Serving HTTP on port %v, HTTPS on port %v...\n", h.Port, tlsPort)
+			pinit()
 		}()
-		time.Sleep(time.Millisecond * 10) // give a little warmup time to the TLS
-		pinit()
-		l.Printf("Serving HTTP on 0.0.0.0 port %v, HTTPS on port %v...\n", h.Port, tlsPort)
 	} else {
 		go func() {
-			time.Sleep(time.Millisecond * 10) // give a little warmup time to the HTTP
+			time.Sleep(time.Millisecond * 100)
+			l.Printf("Serving HTTP on port %v ...\n", h.Port)
 			pinit()
-			l.Printf("Serving HTTP on 0.0.0.0 port %v ...\n", h.Port)
 		}()
 	}
-	l.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", port), h))
+	l.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), h))
 }
 
 // most of the certificate stuff shamelessly lifted from the

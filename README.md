@@ -72,8 +72,8 @@ Options:
   -c path      : enable TLS/HTTPS use a predefined HTTPS certificate
   -t port      : bind HTTPS port (default: 443, 4433 for -g)
 
-Examples: example-server                    start example-server. http://localhost:8000
-  or: example-server -p 80                  use HTTP port 80. http://localhost
-  or: example-server -g                     enable HTTPS generated certificate. https://localhost:4433
-  or: example-server -p 80 -l example.com   enable HTTPS with Let's Encrypt. https://example.com
+Examples: example-server              start example-server. http://localhost:8000
+  or: example-server -p 80            use HTTP port 80. http://localhost
+  or: example-server -g               enable HTTPS generated certificate. https://localhost:4433
+  or: example-server -l example.com   enable HTTPS with Let's Encrypt. https://example.com
 ```
