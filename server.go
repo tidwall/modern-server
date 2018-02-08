@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/md5"
@@ -11,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -56,6 +58,13 @@ type writerExtra struct {
 func (w *writerExtra) Header() http.Header         { return w.base.Header() }
 func (w *writerExtra) WriteHeader(code int)        { w.base.WriteHeader(code) }
 func (w *writerExtra) Write(p []byte) (int, error) { return w.base.Write(p) }
+func (w *writerExtra) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := w.base.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("base response does not implement http.Hijacker")
+	}
+	return hj.Hijack()
+}
 
 // ServeHTTP handles inbound requests
 func (h *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
