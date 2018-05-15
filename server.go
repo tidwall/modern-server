@@ -147,6 +147,8 @@ type Options struct {
 	Init func()
 	// Flags is an optional function that allows for adding command line flags.
 	Flags func()
+	// FlagsParsed is an optional function that fires immediately after flags are parsed.
+	FlagsParsed func()
 	// Usage is an optional function that allows for altering the usage text.
 	Usage func(usage string) string
 	// Logger is a custom logger
@@ -203,6 +205,9 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 		opts.Flags()
 	}
 	flag.Parse()
+	if opts.FlagsParsed != nil {
+		opts.FlagsParsed()
+	}
 
 	if vers {
 		fmt.Fprintf(os.Stdout, "%s version: %s\n", opts.Name, opts.Version)
