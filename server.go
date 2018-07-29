@@ -488,6 +488,9 @@ func HandleFiles(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", 405)
 		return
 	}
+	if path == "" {
+		path = "."
+	}
 again:
 	f, err := os.Open(path)
 	if err != nil {
