@@ -499,9 +499,10 @@ func HandleFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	code := 200
 	path := r.URL.Path[1:]
+	opath := path
 	if l != nil {
 		defer func() {
-			l.Printf("%s %d /%s", r.RemoteAddr, code, path)
+			l.Printf("%s %d /%s", r.RemoteAddr, code, opath)
 		}()
 	}
 	if r.Method != "GET" && r.Method != "HEAD" {
