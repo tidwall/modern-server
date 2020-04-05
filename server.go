@@ -45,6 +45,7 @@ type httpServer struct {
 	Port    int
 	TLSPort int
 	HTTPS   bool
+	dir     string
 	log     *log.Logger
 	waiter  sync.WaitGroup
 	handler func(w http.ResponseWriter, r *http.Request)
@@ -53,6 +54,7 @@ type httpServer struct {
 type writerExtra struct {
 	base http.ResponseWriter
 	log  *log.Logger
+	dir  string
 }
 
 func (w *writerExtra) Header() http.Header         { return w.base.Header() }
@@ -78,7 +80,7 @@ func (h *httpServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.Redirect(w, req, url, 302)
 		return
 	}
-	h.handler(&writerExtra{w, h.log}, req)
+	h.handler(&writerExtra{w, h.log, h.dir}, req)
 }
 
 type keepAliveListener struct {
@@ -129,6 +131,7 @@ Options:
   -l domain    : enable TLS/HTTPS with Let's Encrypt for the given domain name.
   -c path      : enable TLS/HTTPS use a predefined HTTPS certificate
   -t port      : bind HTTPS port (default: 443, 4433 for -g)
+  -r path      : use directory as root for static files
 {{USAGE}}
 Examples: {{NAME}}               start {{NAME}}. http://localhost:8000
   or: {{NAME}} -p 80             use HTTP port 80. http://localhost
@@ -173,6 +176,7 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 	var port int
 	var le string
 	var gs bool
+	var dir string
 	var tlsPort int
 	var tlsCert string
 	var vers bool
@@ -198,6 +202,7 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 	flag.BoolVar(&vers, "v", false, "")
 	flag.IntVar(&port, "p", 8000, "")
 	flag.StringVar(&le, "l", "", "")
+	flag.StringVar(&dir, "r", "", "")
 	flag.StringVar(&tlsCert, "c", "", "")
 	flag.BoolVar(&gs, "g", false, "")
 	flag.IntVar(&tlsPort, "t", -1, "")
@@ -243,12 +248,25 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 		port = 80
 	}
 
+	var adir string
+	var err error
+	if dir != "" {
+		adir, err = filepath.Abs(dir)
+	} else {
+		adir, err = filepath.Abs(".")
+	}
+	if err != nil {
+		l.Fatalf("invalid directory: %s", dir)
+	}
+	dir = adir
+
 	h := &httpServer{
 		Port:    port,
 		TLSPort: tlsPort,
 		log:     l,
 		handler: handler,
 		HTTPS:   le != "" || tlsCert != "" || gs,
+		dir:     dir,
 	}
 
 	pinit := func() {
@@ -474,8 +492,10 @@ func generateCertificates(certPath, keyPath string) error {
 // It just handles static files from your current directory.
 func HandleFiles(w http.ResponseWriter, r *http.Request) {
 	var l *log.Logger
+	var dir string
 	if w, ok := w.(*writerExtra); ok {
 		l = w.log
+		dir = w.dir
 	}
 	code := 200
 	path := r.URL.Path[1:]
@@ -491,8 +511,21 @@ func HandleFiles(w http.ResponseWriter, r *http.Request) {
 	if path == "" {
 		path = "."
 	}
+	if strings.Contains(path, "../") ||
+		strings.Contains(path, "/..") {
+		code = 404
+		http.NotFound(w, r)
+		return
+	}
+
 again:
-	f, err := os.Open(path)
+	apath := filepath.Join(dir, path)
+	if !strings.HasPrefix(apath, dir) {
+		code = 404
+		http.NotFound(w, r)
+		return
+	}
+	f, err := os.Open(apath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			code = 404
