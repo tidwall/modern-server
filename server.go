@@ -131,7 +131,7 @@ Options:
   -l domain    : enable TLS/HTTPS with Let's Encrypt for the given domain name.
   -c path      : enable TLS/HTTPS use a predefined HTTPS certificate
   -t port      : bind HTTPS port (default: 443, 4433 for -g)
-  -r path      : use directory as root for static files
+  -r path      : use directory as root for static files (default: {{DEFDIR}})
 {{USAGE}}
 Examples: {{NAME}}               start {{NAME}}. http://localhost:8000
   or: {{NAME}} -p 80             use HTTP port 80. http://localhost
@@ -156,6 +156,8 @@ type Options struct {
 	Usage func(usage string) string
 	// Logger is a custom logger
 	Logger *log.Logger
+	// Dir is the directory static files. Default is "."
+	Dir string
 }
 
 // Main starts the server environment.
@@ -168,6 +170,9 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 	}
 	if opts.Version == "" {
 		opts.Version = "0.0.0"
+	}
+	if opts.Dir == "" {
+		opts.Dir = "."
 	}
 	l := opts.Logger
 	if l == nil {
@@ -192,6 +197,7 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 		s := usage
 		s = strings.Replace(s, "{{VERSION}}", opts.Version, -1)
 		s = strings.Replace(s, "{{NAME}}", opts.Name, -1)
+		s = strings.Replace(s, "{{DEFDIR}}", opts.Dir, -1)
 		if opts.Usage != nil {
 			s = opts.Usage(s)
 		}
@@ -202,7 +208,7 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 	flag.BoolVar(&vers, "v", false, "")
 	flag.IntVar(&port, "p", 8000, "")
 	flag.StringVar(&le, "l", "", "")
-	flag.StringVar(&dir, "r", "", "")
+	flag.StringVar(&dir, "r", opts.Dir, "")
 	flag.StringVar(&tlsCert, "c", "", "")
 	flag.BoolVar(&gs, "g", false, "")
 	flag.IntVar(&tlsPort, "t", -1, "")
