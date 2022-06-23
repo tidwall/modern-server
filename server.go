@@ -536,11 +536,15 @@ func HandleFiles(w http.ResponseWriter, r *http.Request) {
 again:
 	apath := filepath.Join(dir, path)
 	if !strings.HasPrefix(apath, dir) {
+		println(2)
 		code = 404
 		http.NotFound(w, r)
 		return
 	}
 	f, err := os.Open(apath)
+	if os.IsNotExist(err) && filepath.Ext(apath) == "" {
+		f, err = os.Open(apath + ".html")
+	}
 	if err != nil {
 		if os.IsNotExist(err) {
 			code = 404
