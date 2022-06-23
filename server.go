@@ -536,14 +536,14 @@ func HandleFiles(w http.ResponseWriter, r *http.Request) {
 again:
 	apath := filepath.Join(dir, path)
 	if !strings.HasPrefix(apath, dir) {
-		println(2)
 		code = 404
 		http.NotFound(w, r)
 		return
 	}
 	f, err := os.Open(apath)
 	if os.IsNotExist(err) && filepath.Ext(apath) == "" {
-		f, err = os.Open(apath + ".html")
+		apath = apath + ".html"
+		f, err = os.Open(apath)
 	}
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -575,7 +575,7 @@ again:
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	w.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(path)))
+	w.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(apath)))
 	w.Header().Set("Content-Length", strconv.FormatInt(fi.Size(), 10))
 	w.Header().Set("Last-Modified", fi.ModTime().Format(time.RFC1123))
 	w.Header().Set("ETag", etag)
