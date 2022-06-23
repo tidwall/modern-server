@@ -158,6 +158,13 @@ type Options struct {
 	Logger *log.Logger
 	// Dir is the directory static files. Default is "."
 	Dir string
+	// NoFlags disables automated flags and the the help menu
+	NoFlags bool
+	// Port bind HTTP port. default is 8000.
+	Port int
+	// LetsEncryptDomain enable TLS/HTTPS with Let's Encrypt for the given
+	// domain name.
+	LetsEncryptDomain string
 }
 
 // Main starts the server environment.
@@ -174,52 +181,54 @@ func Main(handler func(w http.ResponseWriter, r *http.Request), opts *Options) {
 	if opts.Dir == "" {
 		opts.Dir = "."
 	}
+	if opts.Port == 0 {
+		opts.Port = 8000
+	}
 	l := opts.Logger
 	if l == nil {
 		l = log.New(os.Stderr, "", log.LstdFlags)
 	}
-	var port int
-	var le string
+	port := opts.Port
+	le := opts.LetsEncryptDomain
+	dir := opts.Dir
 	var gs bool
-	var dir string
 	var tlsPort int
 	var tlsCert string
 	var vers bool
-
-	flag.Usage = func() {
-		w := os.Stderr
-		for _, arg := range os.Args {
-			if arg == "-h" {
-				w = os.Stdout
-				break
+	if !opts.NoFlags {
+		flag.Usage = func() {
+			w := os.Stderr
+			for _, arg := range os.Args {
+				if arg == "-h" {
+					w = os.Stdout
+					break
+				}
 			}
+			s := usage
+			s = strings.Replace(s, "{{VERSION}}", opts.Version, -1)
+			s = strings.Replace(s, "{{NAME}}", opts.Name, -1)
+			s = strings.Replace(s, "{{DEFDIR}}", opts.Dir, -1)
+			if opts.Usage != nil {
+				s = opts.Usage(s)
+			}
+			s = strings.Replace(s, "{{USAGE}}", "", -1)
+			w.Write([]byte(s))
 		}
-		s := usage
-		s = strings.Replace(s, "{{VERSION}}", opts.Version, -1)
-		s = strings.Replace(s, "{{NAME}}", opts.Name, -1)
-		s = strings.Replace(s, "{{DEFDIR}}", opts.Dir, -1)
-		if opts.Usage != nil {
-			s = opts.Usage(s)
+		flag.BoolVar(&vers, "v", false, "")
+		flag.IntVar(&port, "p", port, "")
+		flag.StringVar(&le, "l", le, "")
+		flag.StringVar(&dir, "r", dir, "")
+		flag.StringVar(&tlsCert, "c", "", "")
+		flag.BoolVar(&gs, "g", false, "")
+		flag.IntVar(&tlsPort, "t", -1, "")
+		if opts.Flags != nil {
+			opts.Flags()
 		}
-		s = strings.Replace(s, "{{USAGE}}", "", -1)
-		w.Write([]byte(s))
+		flag.Parse()
+		if opts.FlagsParsed != nil {
+			opts.FlagsParsed()
+		}
 	}
-
-	flag.BoolVar(&vers, "v", false, "")
-	flag.IntVar(&port, "p", 8000, "")
-	flag.StringVar(&le, "l", "", "")
-	flag.StringVar(&dir, "r", opts.Dir, "")
-	flag.StringVar(&tlsCert, "c", "", "")
-	flag.BoolVar(&gs, "g", false, "")
-	flag.IntVar(&tlsPort, "t", -1, "")
-	if opts.Flags != nil {
-		opts.Flags()
-	}
-	flag.Parse()
-	if opts.FlagsParsed != nil {
-		opts.FlagsParsed()
-	}
-
 	if vers {
 		fmt.Fprintf(os.Stdout, "%s version: %s\n", opts.Name, opts.Version)
 		return
@@ -518,8 +527,7 @@ func HandleFiles(w http.ResponseWriter, r *http.Request) {
 	if path == "" {
 		path = "."
 	}
-	if strings.Contains(path, "../") ||
-		strings.Contains(path, "/..") {
+	if strings.Contains(path, "../") || strings.Contains(path, "/..") {
 		code = 404
 		http.NotFound(w, r)
 		return
@@ -559,6 +567,7 @@ again:
 	etag := hex.EncodeToString(sum[:])
 	petag := r.Header.Get("If-None-Match")
 	if petag != "" && etag == petag {
+		code = http.StatusNotModified
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
